@@ -1,77 +1,65 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(libconcorde_tsp_solver)
 
-## Find catkin macros and libraries 
-## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
-## is used, also find other catkin packages
 find_package(catkin REQUIRED)
-find_package(libqsopt)
 
-catkin_package(
-	INCLUDE_DIRS
-		common/include
-	LIBRARIES
-		concorde
-	CATKIN_DEPENDS
-	DEPENDS
-)
+catkin_destinations() # set-up destination variables
+file(MAKE_DIRECTORY ${CATKIN_DEVEL_PREFIX}/${CATKIN_PACKAGE_INCLUDE_DESTINATION})
 
 # check if qsopt has been installed
-if(EXISTS ${libqsopt_INCLUDE_DIRS}/NOT_INSTALLED)
-	message(WARNING "+++++++++++ QSOPT NOT INSTALLED, ONLY TSPs WITH UP TO 10 NODES SOLVABLE +++++++++++")
-	set(QSOPT_INSTALLED "false")
+find_package(libqsopt)
+message("libqsopt_FOUND = ${libqsopt_FOUND}")
+message("libqsopt_INCLUDE_DIRS = ${libqsopt_INCLUDE_DIRS}")
+LIST(GET libqsopt_INCLUDE_DIRS 0 LIBQSOPT_INCLUDE_PATH)
+message("using LIBQSOPT_INCLUDE_PATH = ${LIBQSOPT_INCLUDE_PATH}")
+message("libqsopt_LIBRARIES = ${libqsopt_LIBRARIES}")
+#!!Qsopt is neccessary to solve TSPs with more than 10 nodes!!
+# you need to have a qsopt.a and a qsopt.h in the source folder and you have to use an absolute path to link it with Concorde
+if(libqsopt_FOUND)
+  set(QSOPT_INSTALLED "true")
+  set(QSOPT_CONFIGURE mkdir -p ${PROJECT_BINARY_DIR}/${PROJECT_NAME}-src/libqsopt &&
+                      ${CMAKE_COMMAND} -E copy_if_different ${LIBQSOPT_INCLUDE_PATH}/libqsopt/qsopt.h ${PROJECT_BINARY_DIR}/${PROJECT_NAME}-src/libqsopt &&
+                      ${CMAKE_COMMAND} -E copy_if_different ${libqsopt_LIBRARIES} ${PROJECT_BINARY_DIR}/${PROJECT_NAME}-src/libqsopt &&
+                      ${PROJECT_BINARY_DIR}/${PROJECT_NAME}-src/configure --with-qsopt=${PROJECT_BINARY_DIR}/${PROJECT_NAME}-src/libqsopt)
+  message("QSOPT FOUND , using install configure command: ${QSOPT_CONFIGURE}")
 else()
-	set(QSOPT_INSTALLED "true")
+  message(WARNING "+++++++++++ QSOPT NOT INSTALLED, ONLY TSPs WITH UP TO 10 NODES SOLVABLE +++++++++++")
+  set(QSOPT_INSTALLED "false")
+  set(QSOPT_CONFIGURE "")
 endif()
 
-message(STATUS "Project source dir: ${PROJECT_SOURCE_DIR}")
-message(STATUS "qsopt include dir: ${libqsopt_INCLUDE_DIRS}") # find required absolut path to qsopt and set it as a variable when calling Makefile.tarball s.t. it can access it
-add_custom_target(
-	build_libconcorde_tsp_solver ALL
-		COMMAND export QSOPT_INC=${libqsopt_INCLUDE_DIRS} && export QSOPT_INST=${QSOPT_INSTALLED} && cmake -E chdir ${PROJECT_SOURCE_DIR} make -f Makefile.tarball
-		COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/common/lib/concorde.a  ${CATKIN_DEVEL_PREFIX}/${CATKIN_PACKAGE_LIB_DESTINATION}/concorde.a
+include(ExternalProject)
+ExternalProject_Add(EP_${PROJECT_NAME}
+    URL https://github.com/ipa320/thirdparty/raw/master/concorde-tsp-solver-20031219.tar.gz
+    URL_MD5 fba5435ca1fd01f9da081fe5232a7203
+
+    CONFIGURE_COMMAND "./configure"
+    SOURCE_DIR ${PROJECT_BINARY_DIR}/${PROJECT_NAME}-src
+    BUILD_IN_SOURCE 1
+    BUILD_COMMAND
+      COMMAND ${QSOPT_CONFIGURE}  # use special configuration when building with qsopt
+      COMMAND make
+      # copy headers to devel space (catkin does not like headers in source space)
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different ${PROJECT_BINARY_DIR}/${PROJECT_NAME}-src/concorde.h ${CATKIN_DEVEL_PREFIX}/${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+      # copy libs, set-up soname chain
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different ${PROJECT_BINARY_DIR}/${PROJECT_NAME}-src/concorde.a ${CATKIN_DEVEL_PREFIX}/${CATKIN_PACKAGE_LIB_DESTINATION}
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different ${PROJECT_BINARY_DIR}/${PROJECT_NAME}-src/TSP/concorde ${CATKIN_DEVEL_PREFIX}/${CATKIN_PACKAGE_BIN_DESTINATION}/concorde
+    INSTALL_COMMAND ""
 )
 
-
-
-add_custom_target(
-	copy_concorde_tsp_solver ALL
-		COMMAND ${CMAKE_COMMAND} -E make_directory ${CATKIN_DEVEL_PREFIX}/${CATKIN_PACKAGE_BIN_DESTINATION}/
-		COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/common/bin/concorde ${CATKIN_DEVEL_PREFIX}/${CATKIN_PACKAGE_BIN_DESTINATION}/
-		COMMENT "Copying ${PROJECT_SOURCE_DIR}/common/bin/concorde to ${CATKIN_DEVEL_PREFIX}/${CATKIN_PACKAGE_BIN_DESTINATION}/"
+catkin_package(
+    CFG_EXTRAS libconcorde_tsp_solver-extras.cmake # catkin_package does not support artifacts in devel space
+    EXPORTED_TARGETS EP_${PROJECT_NAME}
 )
 
-include_directories(
-	common/include
+install(DIRECTORY ${CATKIN_DEVEL_PREFIX}/${CATKIN_PACKAGE_INCLUDE_DESTINATION}/
+    DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
 )
 
-add_library(concorde SHARED)
-add_executable(concorde_tsp_solver IMPORTED)
-add_dependencies(concorde_tsp_solver copy_concorde_tsp_solver)
-add_dependencies(copy_concorde_tsp_solver build_libconcorde_tsp_solver)
-set_target_properties(concorde_tsp_solver PROPERTIES LINKER_LANGUAGE CXX)
-set_target_properties(build_libconcorde_tsp_solver PROPERTIES LINKER_LANGUAGE CXX)
-set_target_properties(concorde PROPERTIES LINKER_LANGUAGE CXX)
-
-
-#############
-## Install ##
-#############
-## Mark executables and/or libraries for installation
-install(TARGETS concorde
-	ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-	LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-	RUNTIME DESTINATION ${CATKIN_GLOBAL_BIN_DESTINATION}
+install(FILES ${CATKIN_DEVEL_PREFIX}/${CATKIN_PACKAGE_LIB_DESTINATION}/concorde.a
+    DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
 )
 
-install(PROGRAMS common/bin/concorde
-	DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
-)
-
-install(PROGRAMS common/lib/concorde.a
-	DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-)
-
-install(DIRECTORY common/include/${PROJECT_NAME}/
-	DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+install(PROGRAMS ${CATKIN_DEVEL_PREFIX}/${CATKIN_PACKAGE_BIN_DESTINATION}/concorde
+    DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
