@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<package>
+	<name>ipa_tsp_solvers</name>
+	<version>0.1.0</version>
+	<description>This meta-package provides open source software and includes external libraries for solving the Traveling Salesman Problem (TSP).</description>
+	<license>LGPL for academic and non-commercial use; for commercial use, please contact Fraunhofer IPA</license>
+	<!--url type="website">http://ros.org/wiki/autopnp</url-->
+	<!-- <url type="bugtracker"></url> -->
+	<author email="florian.jordan@ipa.fraunhofer.de">Florian Jordan</author>
+	<maintainer email="florian.jordan@ipa.fraunhofer.de">Florian Jordan</maintainer>
+
+	<buildtool_depend>catkin</buildtool_depend>
+
+	<run_depend>libconcorde_tsp_solver</run_depend>
+
+	<export>
+		<metapackage/>
+	</export>
+</package>
